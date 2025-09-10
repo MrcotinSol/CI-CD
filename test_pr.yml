@@ -1,0 +1,18 @@
+name: PR workflows
+
+on:
+  pull_request:
+    types: [opened, closed]
+
+jobs:
+  on-pr-opened:
+    if: github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Pull Request created"
+
+  on-pr-merged:
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Pull Request merged"
