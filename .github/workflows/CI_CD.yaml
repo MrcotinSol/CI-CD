@@ -1,0 +1,72 @@
+name: PR workflows
+
+on:
+  pull_request:
+    branches: ["release", "developpement"]
+    types: [opened, edited, closed]
+
+jobs:
+  build-image:
+    # Lors de l'ouverture ou de l'édition du code de la PR, l'image docker est construite automatiquement
+    if: github.event.action == 'opened' || github.event.action == 'edited'
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t my-app:${{ github.sha }} ./build
+
+      # Téléchargement de l'image dans le cache de la PR
+      - name: Save image
+        run: |
+          docker save my-app:${{ github.sha }} -o image.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: image.tar
+
+      # Info-bulle pour accéder a l'image
+      - name: Comment PR with artifact info
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: docker-image
+          message: |
+            L'image docker de cette version est disponible.
+            Pour la télécharger, allez dans la section "Actions" de la PR et lancez la commande suivante pour télécharger une archive la contenant:
+            ```
+            docker load -i image.tar
+            ```
+
+  publish-image:
+    runs-on: ubuntu-latest
+    needs: build-image
+    # Publication sur Docker-Hub de l'image lors de l'accéptation de la PR
+    if: github.ref == 'refs/heads/release' && github.event.action == 'closed' && github.event.pull_request.merged == true
+    steps:
+      # Récupération de l'image depuis le cache
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: .
+
+      - name: Load Docker image
+        run: docker load -i image.tar
+
+      #Inscription a Docker-Hub pour avoir les accés de publier une nouvelle version
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Télécharger l'image dans DockerHub
+      - name: Push Docker image
+        run: |
+          docker tag my-app:${{ github.sha }} my-registry/my-app:latest
+          docker push my-registry/my-app:latest
